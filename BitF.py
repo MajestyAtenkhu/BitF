@@ -53,19 +53,48 @@ def setup_interface():
     network = st.selectbox('Network', ['bitcoin', 'bitcoin-cash', 'bitcoin-sv', 'litecoin', 'dogecoin'])
     return network, limit, from_date, till_date
 
-def plot_data(df):
+def fetch_bitcoin_hourly_data():
+    url = "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart"
+    params = {"vs_currency": "usd", "days": "2"}  # Fetch data for the last 2 days to get hourly data
+    response = requests.get(url, params=params)
+    data = response.json()
+    prices = [item[1] for item in data["prices"]]
+    timestamps = [datetime.fromtimestamp(item[0] / 1000) for item in data["prices"]]
+    df = pd.DataFrame({"Timestamp": timestamps, "Price": prices})
+    return df
+
+def plot_price_chart(df):
     plt.figure(figsize=(10, 5))
-    plt.plot(df['timestamp.time'], df['blockSize'], label='Block Size', marker='o')
-    plt.plot(df['timestamp.time'], df['transactionCount'], label='Transactions Per Block', marker='o')
+    plt.plot(df['Timestamp'], df['Price'], label='BTC Price (USD)', marker='o')
     plt.xlabel('Timestamp')
-    plt.ylabel('Block Size / Transactions')
-    plt.title('Block Size and Transactions Per Block Over Time')
-    plt.legend()
+    plt.ylabel('Price (USD)')
+    plt.title('Hourly Bitcoin Price Over the Last 2 Days')
     plt.xticks(rotation=45)
-    plt.tight_layout()
+    plt.legend()
     st.pyplot(plt)
 
+def calculate_and_plot_volatility(df):
+    df.set_index('Timestamp', inplace=True)
+    df['Hourly Volatility'] = df['Price'].rolling(window=24).std()
+    plt.figure(figsize=(10, 5))
+    plt.plot(df.index, df['Hourly Volatility'], label='Hourly Volatility', color='red', marker='o')
+    plt.xlabel('Timestamp')
+    plt.ylabel('Volatility')
+    plt.title('Hourly Bitcoin Volatility Over the Last 2 Days')
+    plt.xticks(rotation=45)
+    plt.legend()
+    st.pyplot(plt)
+
+
 def main():
+    st.title('Bitcoin On-Chain Data and Market Viewer')
+    
+    # Fetch and plot Bitcoin price data
+    bitcoin_price_data = fetch_bitcoin_hourly_data()
+    plot_price_chart(bitcoin_price_data)
+    calculate_and_plot_volatility(bitcoin_price_data)
+    
+    # Existing functionality for blockchain data
     network, limit, from_date, till_date = setup_interface()
     if st.button('Load Data'):
         data = query_bitcoin(network=network, limit=limit, from_date=str(from_date), till_date=str(till_date))
@@ -73,10 +102,11 @@ def main():
             blocks = data['data']['bitcoin']['blocks']
             if blocks:
                 df = pd.json_normalize(blocks)
-                st.write(df)
-                plot_data(df)
+                plot_data(df)  # Plots block size and transactions
+                st.write(df)  # Displays the DataFrame as a table
         else:
             st.error("Failed to fetch data or data is incomplete.")
+
 
 if __name__ == "__main__":
     main()
